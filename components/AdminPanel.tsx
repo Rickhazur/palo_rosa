@@ -210,11 +210,12 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
     // We use a random seed for each to ensure variation
     // 2. Generate 4 URLS
     // We use a random seed for each to ensure variation
-    // Using 'flux' model as requested for "Pro" quality (Nano Banano equivalent)
+    // Reverting to 'turbo' as 'flux' is causing timeouts/errors for the user.
+    // Turbo is the most stable free model right now.
     const images = Array(4).fill(0).map((_, i) => {
       const seed = Math.floor(Math.random() * 100000);
-      // Flux handles detailed prompts much better for "exact" matches
-      return `https://image.pollinations.ai/prompt/${encodeURIComponent(finalPrompt)}?seed=${seed}&nologo=true&model=flux`;
+      // We keep the high fidelity prompt but use the stable engine
+      return `https://image.pollinations.ai/prompt/${encodeURIComponent(finalPrompt)}?seed=${seed}&nologo=true&model=turbo`;
     });
 
     setGeneratedImages(images);
