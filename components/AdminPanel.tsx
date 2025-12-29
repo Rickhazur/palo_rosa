@@ -213,7 +213,8 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
     // Reverting to 'turbo' as 'flux' is causing timeouts/errors for the user.
     // Turbo is the most stable free model right now.
     const images = Array(4).fill(0).map((_, i) => {
-      const seed = Math.floor(Math.random() * 100000);
+      // Use timestamp + random + index to guarantee no cache collisions
+      const seed = Math.floor(Math.random() * 100000) + Date.now() + i;
       // We keep the high fidelity prompt but use the stable engine
       return `https://image.pollinations.ai/prompt/${encodeURIComponent(finalPrompt)}?seed=${seed}&nologo=true&model=turbo`;
     });
