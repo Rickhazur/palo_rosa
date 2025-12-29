@@ -9,6 +9,7 @@ interface AdminPanelProps {
   offers: Offer[];
   onUpdateProduct: (product: Product) => void;
   onAddProduct: (product: Product) => void;
+  onDeleteProduct: (id: string) => void;
   onResetProducts: () => void;
   onAddOffer: (offer: Offer) => void;
   onDeleteOffer: (id: string) => void;
@@ -18,12 +19,16 @@ interface AdminPanelProps {
 
 export const AdminPanel: React.FC<AdminPanelProps> = ({
   products,
+  offers,
   onUpdateProduct,
   onAddProduct,
+  onDeleteProduct,
   onResetProducts,
+  onAddOffer,
+  onDeleteOffer,
   adminPassword,
   onUpdatePassword
-}) => {
+}: AdminPanelProps) => {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [inputPassword, setInputPassword] = useState('');
   const [activeTab, setActiveTab] = useState<'inventory' | 'studio' | 'settings'>('inventory');
@@ -484,7 +489,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                   <img src={product.image} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700" alt={product.name} />
                   <div className="absolute top-3 right-3">
                     <button
-                      onClick={() => confirm('¿Eliminar del catálogo?') && onUpdateProduct({ ...product, id: 'DELETE_ME' } as any)}
+                      onClick={() => confirm('¿Eliminar del catálogo?') && onDeleteProduct(product.id)}
                       className="p-2 bg-white/20 backdrop-blur-md text-white hover:bg-rose-600 rounded-full transition-colors"
                     >
                       <Trash2 size={14} />

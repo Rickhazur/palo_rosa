@@ -15,7 +15,7 @@ import { Lock } from 'lucide-react';
 const App: React.FC = () => {
   const [showWelcome, setShowWelcome] = useState(true);
   const [view, setView] = useState<ViewState>('shop');
-  
+
   const [products, setProducts] = useState<Product[]>(() => {
     try {
       const saved = localStorage.getItem('palo-rosa-products');
@@ -46,7 +46,7 @@ const App: React.FC = () => {
   const [adminPassword, setAdminPassword] = useState(() => {
     return localStorage.getItem('palo-rosa-admin-pass') || 'Karol25';
   });
-  
+
   const [isCartOpen, setIsCartOpen] = useState(false);
   const [notifications, setNotifications] = useState<Notification[]>([]);
 
@@ -80,7 +80,7 @@ const App: React.FC = () => {
       const existing = prev.find(item => item.id === product.id);
       if (existing) {
         addNotification(`Agregamos otro a la cesta 🌹`, 'info');
-        return prev.map(item => 
+        return prev.map(item =>
           item.id === product.id ? { ...item, quantity: item.quantity + 1 } : item
         );
       }
@@ -138,12 +138,12 @@ const App: React.FC = () => {
   return (
     <div className="min-h-screen bg-white text-gray-900 font-sans selection:bg-rose-200 selection:text-rose-900 flex flex-col">
       {showWelcome && <WelcomeScreen onComplete={() => setShowWelcome(false)} />}
-      
+
       <NotificationToast notifications={notifications} removeNotification={removeNotification} />
 
-      <Navigation 
-        cartCount={cartCount} 
-        currentView={view} 
+      <Navigation
+        cartCount={cartCount}
+        currentView={view}
         setView={setView}
         toggleCart={() => setIsCartOpen(true)}
       />
@@ -158,18 +158,12 @@ const App: React.FC = () => {
 
       {view === 'admin' && (
         <main className="animate-fade-in pt-20 flex-grow bg-gray-50/50">
-          <AdminPanel 
+          <AdminPanel
             products={products}
             offers={offers}
-            onUpdateProduct={(p) => {
-              if ((p as any).id === 'DELETE_ME') {
-                // This is a hack for the way delete was called in AdminPanel
-                // Let's just fix the AdminPanel to call a real delete if we had one
-                // But for now, we'll handle it here if we pass the ID to delete
-              }
-              updateProduct(p);
-            }} 
+            onUpdateProduct={updateProduct}
             onAddProduct={addProduct}
+            onDeleteProduct={handleDeleteProduct}
             onResetProducts={resetProducts}
             onAddOffer={addOffer}
             onDeleteOffer={deleteOffer}
@@ -179,36 +173,36 @@ const App: React.FC = () => {
         </main>
       )}
 
-      <CartDrawer 
-        isOpen={isCartOpen} 
+      <CartDrawer
+        isOpen={isCartOpen}
         onClose={() => setIsCartOpen(false)}
         items={cart}
         onRemove={removeFromCart}
         onUpdateQty={updateCartQty}
         total={cartTotal}
       />
-      
+
       <footer className="bg-gray-900 text-white py-20 mt-auto relative overflow-hidden">
         <div className="max-w-7xl mx-auto px-4 text-center relative z-10">
           <div className="flex justify-center mb-8">
-             <div className="w-16 h-16 bg-white/5 rounded-full flex items-center justify-center backdrop-blur-sm border border-white/10">
-                <span className="text-3xl">🌹</span>
-             </div>
+            <div className="w-16 h-16 bg-white/5 rounded-full flex items-center justify-center backdrop-blur-sm border border-white/10">
+              <span className="text-3xl">🌹</span>
+            </div>
           </div>
           <h2 className="font-serif text-4xl mb-4 tracking-tight">Palo Rosa Floristería</h2>
           <p className="text-gray-400 text-lg max-w-md mx-auto mb-12 font-light italic">
             "Transformando momentos en memorias eternas."
           </p>
-          
+
           <div className="flex flex-col md:flex-row justify-center gap-10 text-xs font-bold tracking-[0.3em] uppercase text-gray-500">
             <span className="hover:text-rose-500 transition-colors cursor-default">Envíos a Domicilio</span>
             <span className="hover:text-rose-500 transition-colors cursor-pointer">311 290 56 00</span>
             <span className="hover:text-rose-500 transition-colors cursor-pointer">@PALOROSA</span>
           </div>
-          
+
           <div className="mt-16 pt-8 border-t border-white/5 flex flex-col md:flex-row justify-between items-center gap-4 text-[10px] text-gray-600 font-bold uppercase tracking-widest">
             <span>© {new Date().getFullYear()} Palo Rosa Sky Garden</span>
-            <button 
+            <button
               onClick={() => setView('admin')}
               className="p-2 hover:text-rose-500 transition-colors"
             >
