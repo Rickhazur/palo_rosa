@@ -1,0 +1,8 @@
+
+{
+  "name": "Palo Rosa - Sky Garden Edition",
+  "description": "A beautiful floral e-commerce experience inspired by the Sky Garden, featuring AI-generated sentiment messages and local payment integrations (Nequi, Daviplata, Cash).",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}
