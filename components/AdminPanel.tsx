@@ -113,14 +113,31 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
       const video = videoRef.current;
       const canvas = canvasRef.current;
 
-      // Match canvas dimensions to video
-      canvas.width = video.videoWidth;
-      canvas.height = video.videoHeight;
+      // Optimize image size for AI (Mobile cameras are huge)
+      const MAX_SIZE = 1024;
+      let width = video.videoWidth;
+      let height = video.videoHeight;
+
+      if (width > height) {
+        if (width > MAX_SIZE) {
+          height *= MAX_SIZE / width;
+          width = MAX_SIZE;
+        }
+      } else {
+        if (height > MAX_SIZE) {
+          width *= MAX_SIZE / height;
+          height = MAX_SIZE;
+        }
+      }
+
+      canvas.width = width;
+      canvas.height = height;
 
       const ctx = canvas.getContext('2d');
       if (ctx) {
-        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-        const base64 = canvas.toDataURL('image/jpeg', 0.85);
+        ctx.drawImage(video, 0, 0, width, height);
+        // Lower quality slightly for faster transmission
+        const base64 = canvas.toDataURL('image/jpeg', 0.7);
 
         // TRIGGER AI ANALYSIS
         setIsAnalyzing(true);
