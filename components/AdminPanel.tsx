@@ -68,6 +68,8 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
           streamRef.current = stream;
           if (videoRef.current) {
             videoRef.current.srcObject = stream;
+            // Explicitly play to avoid freezing on some browsers
+            videoRef.current.play().catch(e => console.error("Error playing video:", e));
           }
         } catch (err) {
           console.error("Error accessing camera:", err);
@@ -185,11 +187,11 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
     // We use a random seed for each to ensure variation
     // 2. Generate 4 URLS
     // We use a random seed for each to ensure variation
-    // Using default model or turbo for better reliability
+    // Using 'flux' model as requested for "Pro" quality (Nano Banano equivalent)
     const images = Array(4).fill(0).map((_, i) => {
-      const seed = Math.floor(Math.random() * 100000); // Larger seed range
-      // Simplified URL without dimensions to let API decide best aspect ratio or default
-      return `https://image.pollinations.ai/prompt/${encodeURIComponent(finalPrompt)}?seed=${seed}&nologo=true&model=turbo`;
+      const seed = Math.floor(Math.random() * 100000);
+      // Flux handles detailed prompts much better for "exact" matches
+      return `https://image.pollinations.ai/prompt/${encodeURIComponent(finalPrompt)}?seed=${seed}&nologo=true&model=flux`;
     });
 
     setGeneratedImages(images);
