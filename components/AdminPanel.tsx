@@ -1,5 +1,5 @@
 
-import React, { useRef, useState } from 'react';
+import React, { useRef, useState, useEffect } from 'react';
 import { Product, Offer } from '../types';
 import { Plus, Camera, Lock, RefreshCw, Flower2, Sprout, Gift, Star, Gem, Trash2, Wand2, Sparkles, Image as ImageIcon, Upload, Check, X, MessageSquarePlus, Send } from 'lucide-react';
 import { generateFloralInspiration, analyzeFloralImage, refineFloralPrompt } from '../services/geminiService';
@@ -48,37 +48,63 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   const [refinementText, setRefinementText] = useState('');
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const streamRef = useRef<MediaStream | null>(null);
 
-  const startCamera = async () => {
-    try {
-      // DEBUG: Verify API Key existence
-      const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
-      if (!apiKey) {
-        alert("⚠️ CRÍTICO: No se detectó la API Key en VITE_GEMINI_API_KEY. La Inteligencia Artificial no funcionará.");
-      }
+  useEffect(() => {
+    let mounted = true;
 
-      setIsCameraOpen(true);
-      setAnalysisResult(null); // Reset previous analysis
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: 'environment' } // Prefer back camera on mobile
-      });
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
+    const initCamera = async () => {
+      if (isCameraOpen) {
+        try {
+          const stream = await navigator.mediaDevices.getUserMedia({
+            video: { facingMode: 'environment' }
+          });
+
+          if (!mounted) {
+            stream.getTracks().forEach(t => t.stop());
+            return;
+          }
+
+          streamRef.current = stream;
+          if (videoRef.current) {
+            videoRef.current.srcObject = stream;
+          }
+        } catch (err) {
+          console.error("Error accessing camera:", err);
+          alert("No se pudo acceder a la cámara. Asegúrate de dar permisos.");
+          setIsCameraOpen(false);
+        }
+      } else {
+        // Cleanup if closed
+        if (streamRef.current) {
+          streamRef.current.getTracks().forEach(track => track.stop());
+          streamRef.current = null;
+        }
+        if (videoRef.current) {
+          videoRef.current.srcObject = null;
+        }
       }
-    } catch (err) {
-      console.error("Error accessing camera:", err);
-      alert("No se pudo acceder a la cámara. Asegúrate de dar permisos.");
-      setIsCameraOpen(false);
-    }
+    };
+
+    initCamera();
+
+    return () => {
+      mounted = false;
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach(track => track.stop());
+      }
+    };
+  }, [isCameraOpen]);
+
+  const startCamera = () => {
+    setIsCameraOpen(true);
+    setAnalysisResult(null);
   };
 
   const stopCamera = () => {
-    if (videoRef.current && videoRef.current.srcObject) {
-      const tracks = (videoRef.current.srcObject as MediaStream).getTracks();
-      tracks.forEach(track => track.stop());
-    }
     setIsCameraOpen(false);
   };
+
 
   const capturePhoto = () => {
     if (videoRef.current && canvasRef.current) {
@@ -98,12 +124,13 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
         setIsAnalyzing(true);
         analyzeFloralImage(base64)
           .then(result => {
+            // Just set the description for the user to see, but don't overwhelm
+            // We can use this analysis to seed the generator if they want
             setAnalysisResult(result);
             setIsAnalyzing(false);
           })
           .catch(err => {
             console.error("AI Analysis failed", err);
-            setAnalysisResult("No se pudo conectar con el Arquitecto Floral.");
             setIsAnalyzing(false);
           });
 
@@ -112,11 +139,49 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
         } else {
           setNewProduct(prev => ({ ...prev, image: base64 }));
         }
-        // Don't stop camera yet, let user see result or capture again
-        // stopCamera();
       }
     }
   };
+
+  // --- MAGIC STUDIO STATE ---
+  const [showMagicStudio, setShowMagicStudio] = useState(false);
+  const [magicPrompt, setMagicPrompt] = useState('');
+  const [generatedImages, setGeneratedImages] = useState<string[]>([]);
+  const [isMagicLoading, setIsMagicLoading] = useState(false);
+
+  const handleMagicGenerate = async () => {
+    if (!magicPrompt) return;
+    setIsMagicLoading(true);
+    setGeneratedImages([]);
+
+    // 1. Refine prompt with Gemini to make it "Artistic"
+    // We treat the user input as the "refinement" on top of a base floral context
+    let finalPrompt = magicPrompt;
+    try {
+      // Simple call to get a better prompt if possible, or just use user input
+      // For speed, let's just use the user input + floral keywords for now, 
+      // or call refineFloralPrompt if we had a previous analysis.
+      // Let's prepend some quality keywords.
+      finalPrompt = `floral arrangement, ${magicPrompt}, 8k resolution, photorealistic, cinematic lighting, masterpiece`;
+    } catch (e) {
+      console.log("Error optimizing prompt", e);
+    }
+
+    // 2. Generate 4 URLS
+    // We use a random seed for each to ensure variation
+    // 2. Generate 4 URLS
+    // We use a random seed for each to ensure variation
+    // Using default model or turbo for better reliability
+    const images = Array(4).fill(0).map((_, i) => {
+      const seed = Math.floor(Math.random() * 100000); // Larger seed range
+      // Simplified URL without dimensions to let API decide best aspect ratio or default
+      return `https://image.pollinations.ai/prompt/${encodeURIComponent(finalPrompt)}?seed=${seed}&nologo=true&model=turbo`;
+    });
+
+    setGeneratedImages(images);
+    setIsMagicLoading(false);
+  };
+
 
   const categories = [
     { id: 'flowers', label: 'Ramos', icon: <Flower2 size={16} /> },
@@ -292,21 +357,13 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                     <Upload size={14} /> Galería / Resultado
                   </button>
                 </div>
-                {/* Dedicated Return Button */}
+                {/* Dedicated Return Button / Magic Trigger */}
                 <div className="relative">
-                  <input
-                    type="file"
-                    accept="image/*"
-                    className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-                    onChange={(e) => {
-                      if (e.target.files?.[0]) {
-                        processFile(e.target.files[0]);
-                        alert("¡Imagen actualizada! ✨");
-                      }
-                    }}
-                  />
-                  <button className="w-full py-3 bg-gradient-to-r from-gray-900 to-black text-rose-200 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:shadow-lg transition-all flex items-center justify-center gap-2 border border-rose-900/30">
-                    <Wand2 size={14} /> Reemplazar con Imagen IA
+                  <button
+                    onClick={() => setShowMagicStudio(true)}
+                    className="w-full py-3 bg-gradient-to-r from-rose-900 to-black text-rose-200 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:shadow-lg hover:shadow-rose-900/20 transition-all flex items-center justify-center gap-2 border border-rose-900/30 group"
+                  >
+                    <Wand2 size={14} className="group-hover:animate-spin" /> ✨ Asistente de Diseño AI
                   </button>
                 </div>
 
@@ -686,6 +743,108 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
           </div>
         )
       }
+      {/* Magic Studio Modal */}
+      {showMagicStudio && (
+        <div className="fixed inset-0 z-[70] bg-black/95 backdrop-blur-md flex flex-col items-center justify-center p-4 animate-fade-in">
+          <div className="w-full max-w-4xl bg-gray-900 rounded-[2.5rem] border border-gray-800 overflow-hidden shadow-2xl flex flex-col max-h-[90vh]">
+            {/* Header */}
+            <div className="p-6 border-b border-white/5 flex justify-between items-center bg-gradient-to-r from-gray-900 to-gray-800">
+              <div className="flex items-center gap-3">
+                <div className="p-3 bg-rose-500/10 rounded-xl text-rose-400">
+                  <Wand2 size={24} />
+                </div>
+                <div>
+                  <h3 className="text-xl font-serif font-bold text-white">Estudio Mágico</h3>
+                  <p className="text-gray-400 text-xs uppercase tracking-widest">Generación de arreglos florales</p>
+                </div>
+              </div>
+              <button onClick={() => setShowMagicStudio(false)} className="p-2 hover:bg-white/10 rounded-full text-gray-400 transition-colors">
+                <X size={24} />
+              </button>
+            </div>
+
+            {/* Body */}
+            <div className="p-8 overflow-y-auto flex-1">
+
+              {/* Prompt Input */}
+              <div className="flex gap-4 mb-10">
+                <div className="flex-1">
+                  <label className="text-xs font-bold text-rose-400 uppercase tracking-widest mb-3 block">Describe tu visión</label>
+                  <textarea
+                    value={magicPrompt}
+                    onChange={e => setMagicPrompt(e.target.value)}
+                    placeholder="Ej. Ramo gigante de girasoles en un jarrón de cristal azul, iluminación de atardecer, estilo lujoso..."
+                    className="w-full bg-black/50 border border-white/10 rounded-2xl p-4 text-white placeholder:text-gray-600 focus:border-rose-500 focus:outline-none transition-colors h-32 resize-none"
+                  />
+                </div>
+                <div className="w-48 flex flex-col gap-2">
+                  <label className="text-xs font-bold text-gray-600 uppercase tracking-widest mb-3 block opacity-0">Acción</label>
+                  <button
+                    onClick={handleMagicGenerate}
+                    disabled={!magicPrompt || isMagicLoading}
+                    className="h-full bg-rose-600 hover:bg-rose-500 text-white rounded-2xl font-bold uppercase tracking-widest transition-all p-4 flex flex-col items-center justify-center gap-3 disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-rose-900/20"
+                  >
+                    {isMagicLoading ? (
+                      <>
+                        <RefreshCw className="animate-spin" size={32} />
+                        <span className="text-xs text-center">Creando...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Sparkles size={32} />
+                        <span className="text-xs text-center">Generar 4 Opciones</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+              </div>
+
+              {/* Results Grid */}
+              {generatedImages.length > 0 && (
+                <div className="space-y-4">
+                  <label className="text-xs font-bold text-gray-400 uppercase tracking-widest block">Resultados (Haz click para seleccionar)</label>
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                    {generatedImages.map((src, idx) => (
+                      <button
+                        key={idx}
+                        onClick={() => {
+                          if (editingId) setEditFields(prev => ({ ...prev, image: src }));
+                          else setNewProduct(prev => ({ ...prev, image: src }));
+                          setShowMagicStudio(false);
+                          alert("✨ ¡Diseño aplicado!");
+                        }}
+                        className="relative aspect-square rounded-2xl overflow-hidden group border-2 border-transparent hover:border-rose-500 transition-all bg-gray-800"
+                      >
+                        <img
+                          src={src}
+                          className="w-full h-full object-cover"
+                          alt={`Generated ${idx}`}
+                          onError={(e) => {
+                            // Fallback if image fails
+                            (e.target as HTMLImageElement).src = 'https://placehold.co/400x400/1f2937/fb7185?text=Error+Generando';
+                          }}
+                        />
+                        <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                          <span className="bg-rose-600 text-white px-4 py-2 rounded-full text-xs font-bold uppercase tracking-widest">Usar este</span>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {!generatedImages.length && !isMagicLoading && (
+                <div className="text-center py-20 opacity-30">
+                  <Flower2 size={64} className="mx-auto mb-4" />
+                  <p className="uppercase tracking-widest font-bold">Tu lienzo está vacío</p>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
     </div >
   );
 };
+
