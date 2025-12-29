@@ -126,11 +126,14 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
           .then(result => {
             // Just set the description for the user to see, but don't overwhelm
             // We can use this analysis to seed the generator if they want
-            setAnalysisResult(result);
+            // Clean the result for better UX
+            const cleanResult = result.replace(/\*\*/g, '').trim();
+            setAnalysisResult(cleanResult);
             setIsAnalyzing(false);
           })
           .catch(err => {
             console.error("AI Analysis failed", err);
+            // Don't show error text as result, just log it
             setIsAnalyzing(false);
           });
 
@@ -149,6 +152,18 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   const [generatedImages, setGeneratedImages] = useState<string[]>([]);
   const [isMagicLoading, setIsMagicLoading] = useState(false);
 
+  // Auto-fill prompt when opening Magic Studio if analysis exists
+  useEffect(() => {
+    if (showMagicStudio && analysisResult) {
+      // Clean up the analysis text to be a better prompt
+      // Often analysis comes with "Analysis:" prefix or list format. 
+      // We take it as is, but maybe strip newlines if needed.
+      setMagicPrompt(analysisResult.replace('Analysis:', '').trim());
+    } else if (showMagicStudio && !magicPrompt) {
+      setMagicPrompt('');
+    }
+  }, [showMagicStudio, analysisResult]);
+
   const handleMagicGenerate = async () => {
     if (!magicPrompt) return;
     setIsMagicLoading(true);
@@ -158,11 +173,10 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
     // We treat the user input as the "refinement" on top of a base floral context
     let finalPrompt = magicPrompt;
     try {
-      // Simple call to get a better prompt if possible, or just use user input
-      // For speed, let's just use the user input + floral keywords for now, 
-      // or call refineFloralPrompt if we had a previous analysis.
-      // Let's prepend some quality keywords.
-      finalPrompt = `floral arrangement, ${magicPrompt}, 8k resolution, photorealistic, cinematic lighting, masterpiece`;
+      // 1. Refine prompt - visual fidelity
+      // We prioritize the user's description (which might be the analysis)
+      // and add strict keywords for realism and fidelity.
+      finalPrompt = `${magicPrompt}, exact match, photorealistic, 8k resolution, cinematic lighting, masterpiece, high detail`;
     } catch (e) {
       console.log("Error optimizing prompt", e);
     }
