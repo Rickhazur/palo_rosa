@@ -1,8 +1,7 @@
 
 import React, { useRef, useState, useEffect } from 'react';
 import { Product, Offer } from '../types';
-import { Plus, Camera, Lock, RefreshCw, Flower2, Sprout, Gift, Star, Gem, Trash2, Wand2, Sparkles, Image as ImageIcon, Upload, Check, X, MessageSquarePlus, Send } from 'lucide-react';
-import { generateFloralInspiration, analyzeFloralImage, refineFloralPrompt } from '../services/geminiService';
+import { Plus, Camera, Lock, RefreshCw, Flower2, Sprout, Gift, Star, Gem, Trash2, Image as ImageIcon, Upload, Check, X, MessageSquarePlus, Send } from 'lucide-react';
 
 interface AdminPanelProps {
   products: Product[];
@@ -31,11 +30,9 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
 }: AdminPanelProps) => {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [inputPassword, setInputPassword] = useState('');
-  const [activeTab, setActiveTab] = useState<'inventory' | 'studio' | 'settings'>('inventory');
+  const [activeTab, setActiveTab] = useState<'inventory' | 'settings'>('inventory');
 
   // States for Image Handling
-  const [isGenerating, setIsGenerating] = useState(false);
-  const [aiPrompt, setAiPrompt] = useState('');
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editFields, setEditFields] = useState<Partial<Product>>({});
 
@@ -46,11 +43,8 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   const uploadInputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
 
-  // New Camera Logic
+  // Camera State
   const [isCameraOpen, setIsCameraOpen] = useState(false);
-  const [isAnalyzing, setIsAnalyzing] = useState(false);
-  const [analysisResult, setAnalysisResult] = useState<string | null>(null);
-  const [refinementText, setRefinementText] = useState('');
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -105,124 +99,37 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
 
   const startCamera = () => {
     setIsCameraOpen(true);
-    setAnalysisResult(null);
   };
 
   const stopCamera = () => {
     setIsCameraOpen(false);
   };
 
-
   const capturePhoto = () => {
     if (videoRef.current && canvasRef.current) {
       const video = videoRef.current;
       const canvas = canvasRef.current;
 
-      // Optimize image size for AI (Mobile connection safe)
-      // Aggressive reduction to 512px to prevent timeouts
-      const MAX_SIZE = 512;
-      let width = video.videoWidth;
-      let height = video.videoHeight;
-
-      if (width > height) {
-        if (width > MAX_SIZE) {
-          height *= MAX_SIZE / width;
-          width = MAX_SIZE;
-        }
-      } else {
-        if (height > MAX_SIZE) {
-          width *= MAX_SIZE / height;
-          height = MAX_SIZE;
-        }
-      }
-
-      canvas.width = width;
-      canvas.height = height;
+      // Standard resolution for catalog
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
 
       const ctx = canvas.getContext('2d');
       if (ctx) {
-        ctx.drawImage(video, 0, 0, width, height);
-        // Lower quality for maximum compatibility
-        const base64 = canvas.toDataURL('image/jpeg', 0.6);
-
-        // TRIGGER AI ANALYSIS
-        setIsAnalyzing(true);
-        analyzeFloralImage(base64)
-          .then(result => {
-            // Just set the description for the user to see, but don't overwhelm
-            // We can use this analysis to seed the generator if they want
-            // Clean the result for better UX
-            const cleanResult = result.replace(/\*\*/g, '').trim();
-            setAnalysisResult(cleanResult);
-            setIsAnalyzing(false);
-          })
-          .catch(err => {
-            console.error("AI Analysis failed", err);
-            // Don't show error text as result, just log it
-            setIsAnalyzing(false);
-          });
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+        const base64 = canvas.toDataURL('image/jpeg', 0.85);
 
         if (editingId) {
           setEditFields(prev => ({ ...prev, image: base64 }));
         } else {
           setNewProduct(prev => ({ ...prev, image: base64 }));
         }
+
+        // Close camera immediately after capture
+        stopCamera();
       }
     }
   };
-
-  // --- MAGIC STUDIO STATE ---
-  const [showMagicStudio, setShowMagicStudio] = useState(false);
-  const [magicPrompt, setMagicPrompt] = useState('');
-  const [generatedImages, setGeneratedImages] = useState<string[]>([]);
-  const [isMagicLoading, setIsMagicLoading] = useState(false);
-
-  // Auto-fill prompt when opening Magic Studio if analysis exists
-  useEffect(() => {
-    if (showMagicStudio && analysisResult) {
-      // Clean up the analysis text to be a better prompt
-      // Often analysis comes with "Analysis:" prefix or list format. 
-      // We take it as is, but maybe strip newlines if needed.
-      setMagicPrompt(analysisResult.replace('Analysis:', '').trim());
-    } else if (showMagicStudio && !magicPrompt) {
-      setMagicPrompt('');
-    }
-  }, [showMagicStudio, analysisResult]);
-
-  const handleMagicGenerate = async () => {
-    if (!magicPrompt) return;
-    setIsMagicLoading(true);
-    setGeneratedImages([]);
-
-    // 1. Refine prompt with Gemini to make it "Artistic"
-    // We treat the user input as the "refinement" on top of a base floral context
-    let finalPrompt = magicPrompt;
-    try {
-      // 1. Refine prompt - visual fidelity
-      // We prioritize the user's description (which might be the analysis)
-      // and add strict keywords for realism and fidelity.
-      finalPrompt = `${magicPrompt}, exact match, photorealistic, 8k resolution, cinematic lighting, masterpiece, high detail`;
-    } catch (e) {
-      console.log("Error optimizing prompt", e);
-    }
-
-    // 2. Generate 4 URLS
-    // We use a random seed for each to ensure variation
-    // 2. Generate 4 URLS
-    // We use a random seed for each to ensure variation
-    // Reverting to 'turbo' as 'flux' is causing timeouts/errors for the user.
-    // Turbo is the most stable free model right now.
-    const images = Array(4).fill(0).map((_, i) => {
-      // FIX: Use a safe 32-bit integer for seed. Date.now() was too large causing API errors.
-      const seed = Math.floor(Math.random() * 2000000000) + i;
-      // We keep the high fidelity prompt but use the stable engine
-      return `https://image.pollinations.ai/prompt/${encodeURIComponent(finalPrompt)}?seed=${seed}&nologo=true&model=turbo`;
-    });
-
-    setGeneratedImages(images);
-    setIsMagicLoading(false);
-  };
-
 
   const categories = [
     { id: 'flowers', label: 'Ramos', icon: <Flower2 size={16} /> },
@@ -287,19 +194,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
     if (cameraInputRef.current) cameraInputRef.current.value = '';
   };
 
-  const handleAiInspiration = async () => {
-    if (!aiPrompt) return;
-    setIsGenerating(true);
-    const result = await generateFloralInspiration(aiPrompt);
-    if (result) {
-      setNewProduct(prev => ({ ...prev, image: result }));
-      setActiveTab('inventory');
-      window.scrollTo({ top: 0, behavior: 'smooth' });
-    } else {
-      alert("No se pudo generar la imagen. Verifica tu conexión o API Key.");
-    }
-    setIsGenerating(false);
-  };
+
 
   if (!isAuthenticated) {
     return (
@@ -396,15 +291,6 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                     className="flex items-center justify-center gap-2 py-3 px-4 bg-rose-50 text-rose-600 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-rose-100 transition-colors"
                   >
                     <Upload size={14} /> Galería / Resultado
-                  </button>
-                </div>
-                {/* Dedicated Return Button / Magic Trigger */}
-                <div className="relative">
-                  <button
-                    onClick={() => setShowMagicStudio(true)}
-                    className="w-full py-3 bg-gradient-to-r from-rose-900 to-black text-rose-200 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:shadow-lg hover:shadow-rose-900/20 transition-all flex items-center justify-center gap-2 border border-rose-900/30 group"
-                  >
-                    <Wand2 size={14} className="group-hover:animate-spin" /> ✨ Asistente de Diseño AI
                   </button>
                 </div>
 
@@ -604,16 +490,6 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
 
               <div className="absolute bottom-0 left-0 right-0 p-8 bg-gradient-to-t from-black via-black/50 to-transparent flex flex-col items-center gap-4">
 
-                {isAnalyzing && (
-                  <div className="bg-black/80 text-white px-6 py-4 rounded-xl flex items-center gap-3 backdrop-blur-md border border-rose-500/50 mb-4 animate-pulse shadow-2xl shadow-rose-900/50">
-                    <Sparkles className="animate-spin text-rose-400" size={24} />
-                    <div className="text-left">
-                      <p className="text-sm font-bold uppercase tracking-widest text-rose-200">Analizando...</p>
-                      <p className="text-[10px] text-gray-400">Conectando con el Arquitecto Floral</p>
-                    </div>
-                  </div>
-                )}
-
                 <div className="flex gap-6 items-center">
                   {/* Main Capture Button */}
                   <button
@@ -622,268 +498,37 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                   >
                     <div className="w-16 h-16 bg-white rounded-full border-4 border-black shadow-lg" />
                   </button>
-
-                  {/* Manual Re-Analyze Trigger (Only if image exists but no result yet) */}
-                  {!isAnalyzing && !analysisResult && (
-                    <button
-                      onClick={() => {
-                        if (canvasRef.current) {
-                          const base64 = canvasRef.current.toDataURL('image/jpeg', 0.85);
-                          setIsAnalyzing(true);
-                          analyzeFloralImage(base64)
-                            .then(result => {
-                              setAnalysisResult(result);
-                              setIsAnalyzing(false);
-                            })
-                            .catch(err => {
-                              alert(`Error manual: ${err}`);
-                              setAnalysisResult(`Error: ${err}`);
-                              setIsAnalyzing(false);
-                            });
-                        } else {
-                          alert("Primero captura una foto.");
-                        }
-                      }}
-                      className="p-3 rounded-full bg-white/10 hover:bg-rose-600 transition-colors border border-white/20 text-white"
-                      title="Forzar Análisis"
-                    >
-                      <Wand2 size={24} />
-                    </button>
-                  )}
+                  <input
+                    type="file"
+                    accept="image/*"
+                    className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
+                    onChange={(e) => {
+                      if (e.target.files?.[0]) {
+                        const file = e.target.files[0];
+                        const reader = new FileReader();
+                        reader.onload = (ev) => {
+                          const result = ev.target?.result as string;
+                          if (editingId) setEditFields(prev => ({ ...prev, image: result }));
+                          else setNewProduct(prev => ({ ...prev, image: result }));
+                          setAnalysisResult(null);
+                          setIsCameraOpen(false);
+                          alert("¡Imagen reemplazada! ✨");
+                        };
+                        reader.readAsDataURL(file);
+                      }
+                    }}
+                  />
+                  <button className="w-full h-full py-3 bg-white/5 border border-white/20 rounded-lg text-white text-[10px] font-bold uppercase tracking-widest hover:bg-white/10 transition-all flex items-center justify-center gap-2">
+                    <Upload size={12} /> Subir Resultado Manualmente
+                  </button>
                 </div>
               </div>
-
-              {/* Analysis Result Overlay */}
-              {analysisResult && (
-                <div className="absolute inset-x-4 bottom-24 top-20 bg-black/90 backdrop-blur-xl rounded-2xl border border-white/10 p-6 overflow-y-auto animate-fade-in-up flex flex-col">
-                  <div className="flex justify-between items-start mb-4">
-                    <h3 className="text-xl font-serif font-bold text-rose-300 flex items-center gap-2">
-                      <Sparkles size={20} /> Visión del Arquitecto
-                    </h3>
-                    <button
-                      onClick={() => setAnalysisResult(null)}
-                      className="p-2 bg-white/10 rounded-full hover:bg-white/20 transition-colors"
-                    >
-                      <X size={16} className="text-white" />
-                    </button>
-                  </div>
-
-                  <div className="flex-1 overflow-y-auto space-y-6 mb-4 pr-2">
-                    {(() => {
-                      // Simple parser for the structured response
-                      const sections = analysisResult.split(/\*\*(Option \d+|Analysis|Análisis).*?\*\*:/g).filter(s => s.trim());
-                      // The split might keep the delimiters or not depending on browser regex implementation with capturing groups, 
-                      // but since we didn't use capturing groups for the whole delimiter in a way that preserves it usually in simple splits, 
-                      // let's try a robust approach: matching the headers.
-
-                      // Actually, let's just parse manually for robustness
-                      const parts = [];
-                      const lines = analysisResult.split('\n');
-                      let currentSection = { title: 'Intro', content: '' };
-
-                      lines.forEach(line => {
-                        if (line.includes('**Analysis') || line.includes('**Análisis')) {
-                          if (currentSection.content.trim()) parts.push(currentSection);
-                          currentSection = { title: 'Análisis Visual', content: '' };
-                        } else if (line.includes('**Option 1') || line.includes('Option 1:')) {
-                          if (currentSection.content.trim()) parts.push(currentSection);
-                          currentSection = { title: 'Opción 1: Comercial Hiper-Realista', content: '' };
-                        } else if (line.includes('**Option 2') || line.includes('Option 2:')) {
-                          if (currentSection.content.trim()) parts.push(currentSection);
-                          currentSection = { title: 'Opción 2: Cinemático/Moody', content: '' };
-                        } else if (line.includes('**Option 3') || line.includes('Option 3:')) {
-                          if (currentSection.content.trim()) parts.push(currentSection);
-                          currentSection = { title: 'Opción 3: Macro/Detalle', content: '' };
-                        } else {
-                          currentSection.content += line + '\n';
-                        }
-                      });
-                      if (currentSection.content.trim()) parts.push(currentSection);
-
-                      return parts.map((part, idx) => (
-                        <div key={idx} className={`p-4 rounded-xl border ${part.title.includes('Opción') ? 'bg-white/5 border-rose-500/30' : 'bg-transparent border-transparent'}`}>
-                          <h4 className="text-sm font-bold text-rose-200 uppercase tracking-widest mb-2">{part.title}</h4>
-                          <p className="text-gray-300 text-sm font-light leading-relaxed whitespace-pre-wrap">{part.content.trim()}</p>
-
-                          {part.title.includes('Opción') && (
-                            <div className="flex flex-col gap-2 mt-3">
-                              <div className="relative overflow-hidden group">
-                                <input
-                                  type="file"
-                                  accept="image/*"
-                                  className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
-                                  onChange={(e) => {
-                                    if (e.target.files?.[0]) {
-                                      const file = e.target.files[0];
-                                      const reader = new FileReader();
-                                      reader.onload = (ev) => {
-                                        const result = ev.target?.result as string;
-                                        if (editingId) setEditFields(prev => ({ ...prev, image: result }));
-                                        else setNewProduct(prev => ({ ...prev, image: result }));
-                                        setAnalysisResult(null);
-                                        setIsCameraOpen(false);
-                                        alert("¡Imagen reemplazada! ✨");
-                                      };
-                                      reader.readAsDataURL(file);
-                                    }
-                                  }}
-                                />
-                                <button className="w-full h-full py-3 bg-white/5 border border-white/20 rounded-lg text-white text-[10px] font-bold uppercase tracking-widest hover:bg-white/10 transition-all flex items-center justify-center gap-2">
-                                  <Upload size={12} /> Subir Resultado Manualmente
-                                </button>
-                              </div>
-                            </div>
-                          )}
-                        </div>
-                      ));
-                    })()}
-                  </div>
-
-                  {/* Refinement Section */}
-                  <div className="mt-auto space-y-3 pt-4 border-t border-white/10">
-                    <div className="relative">
-                      <input
-                        type="text"
-                        placeholder="Ej. Hazlo más morado, quita el jarrón..."
-                        className="w-full bg-white/5 border border-white/20 rounded-xl px-4 py-3 text-sm text-white placeholder:text-gray-500 focus:outline-none focus:border-rose-500 transition-colors pr-12"
-                        value={refinementText}
-                        onChange={e => setRefinementText(e.target.value)}
-                        onKeyDown={e => {
-                          if (e.key === 'Enter' && refinementText.trim() && !isAnalyzing) {
-                            setIsAnalyzing(true);
-                            refineFloralPrompt(newProduct.image || '', analysisResult, refinementText)
-                              .then(result => {
-                                setAnalysisResult(result);
-                                setRefinementText('');
-                                setIsAnalyzing(false);
-                              });
-                          }
-                        }}
-                      />
-                      <button
-                        disabled={!refinementText.trim() || isAnalyzing}
-                        onClick={() => {
-                          setIsAnalyzing(true);
-                          refineFloralPrompt(newProduct.image || '', analysisResult, refinementText)
-                            .then(result => {
-                              setAnalysisResult(result);
-                              setRefinementText('');
-                              setIsAnalyzing(false);
-                            });
-                        }}
-                        className="absolute right-2 top-1/2 -translate-y-1/2 p-2 bg-rose-600 rounded-lg text-white hover:bg-rose-700 disabled:opacity-50 transition-all"
-                      >
-                        {isAnalyzing ? <RefreshCw className="animate-spin" size={14} /> : <Send size={14} />}
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              )}
             </div>
             <p className="text-gray-400 mt-4 text-xs font-bold uppercase tracking-widest">Ajusta tu encuadre y captura</p>
           </div>
         )
       }
-      {/* Magic Studio Modal */}
-      {showMagicStudio && (
-        <div className="fixed inset-0 z-[70] bg-black/95 backdrop-blur-md flex flex-col items-center justify-center p-4 animate-fade-in">
-          <div className="w-full max-w-4xl bg-gray-900 rounded-[2.5rem] border border-gray-800 overflow-hidden shadow-2xl flex flex-col max-h-[90vh]">
-            {/* Header */}
-            <div className="p-6 border-b border-white/5 flex justify-between items-center bg-gradient-to-r from-gray-900 to-gray-800">
-              <div className="flex items-center gap-3">
-                <div className="p-3 bg-rose-500/10 rounded-xl text-rose-400">
-                  <Wand2 size={24} />
-                </div>
-                <div>
-                  <h3 className="text-xl font-serif font-bold text-white">Estudio Mágico</h3>
-                  <p className="text-gray-400 text-xs uppercase tracking-widest">Generación de arreglos florales</p>
-                </div>
-              </div>
-              <button onClick={() => setShowMagicStudio(false)} className="p-2 hover:bg-white/10 rounded-full text-gray-400 transition-colors">
-                <X size={24} />
-              </button>
-            </div>
 
-            {/* Body */}
-            <div className="p-8 overflow-y-auto flex-1">
-
-              {/* Prompt Input */}
-              <div className="flex gap-4 mb-10">
-                <div className="flex-1">
-                  <label className="text-xs font-bold text-rose-400 uppercase tracking-widest mb-3 block">Describe tu visión</label>
-                  <textarea
-                    value={magicPrompt}
-                    onChange={e => setMagicPrompt(e.target.value)}
-                    placeholder="Ej. Ramo gigante de girasoles en un jarrón de cristal azul, iluminación de atardecer, estilo lujoso..."
-                    className="w-full bg-black/50 border border-white/10 rounded-2xl p-4 text-white placeholder:text-gray-600 focus:border-rose-500 focus:outline-none transition-colors h-32 resize-none"
-                  />
-                </div>
-                <div className="w-48 flex flex-col gap-2">
-                  <label className="text-xs font-bold text-gray-600 uppercase tracking-widest mb-3 block opacity-0">Acción</label>
-                  <button
-                    onClick={handleMagicGenerate}
-                    disabled={!magicPrompt || isMagicLoading}
-                    className="h-full bg-rose-600 hover:bg-rose-500 text-white rounded-2xl font-bold uppercase tracking-widest transition-all p-4 flex flex-col items-center justify-center gap-3 disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-rose-900/20"
-                  >
-                    {isMagicLoading ? (
-                      <>
-                        <RefreshCw className="animate-spin" size={32} />
-                        <span className="text-xs text-center">Creando...</span>
-                      </>
-                    ) : (
-                      <>
-                        <Sparkles size={32} />
-                        <span className="text-xs text-center">Generar 4 Opciones</span>
-                      </>
-                    )}
-                  </button>
-                </div>
-              </div>
-
-              {/* Results Grid */}
-              {generatedImages.length > 0 && (
-                <div className="space-y-4">
-                  <label className="text-xs font-bold text-gray-400 uppercase tracking-widest block">Resultados (Haz click para seleccionar)</label>
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                    {generatedImages.map((src, idx) => (
-                      <button
-                        key={idx}
-                        onClick={() => {
-                          if (editingId) setEditFields(prev => ({ ...prev, image: src }));
-                          else setNewProduct(prev => ({ ...prev, image: src }));
-                          setShowMagicStudio(false);
-                          alert("✨ ¡Diseño aplicado!");
-                        }}
-                        className="relative aspect-square rounded-2xl overflow-hidden group border-2 border-transparent hover:border-rose-500 transition-all bg-gray-800"
-                      >
-                        <img
-                          src={src}
-                          className="w-full h-full object-cover"
-                          alt={`Generated ${idx}`}
-                          onError={(e) => {
-                            // Fallback if image fails
-                            (e.target as HTMLImageElement).src = 'https://placehold.co/400x400/1f2937/fb7185?text=Error+Generando';
-                          }}
-                        />
-                        <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                          <span className="bg-rose-600 text-white px-4 py-2 rounded-full text-xs font-bold uppercase tracking-widest">Usar este</span>
-                        </div>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {!generatedImages.length && !isMagicLoading && (
-                <div className="text-center py-20 opacity-30">
-                  <Flower2 size={64} className="mx-auto mb-4" />
-                  <p className="uppercase tracking-widest font-bold">Tu lienzo está vacío</p>
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
 
     </div >
   );
